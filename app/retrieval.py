@@ -125,7 +125,7 @@ class Retriever:
         scored: list[RetrievedPassage] = []
         for p, vec in zip(self.passages, self.vectors):
             lexical = sum(q_vec.get(k, 0.0) * v for k, v in vec.items())
-            if lexical <= 0.01:
+            if lexical <= 0.001:
                 continue
             heading_bonus = 0.25 if any(t in _tokens(p.heading) for t in q_counts) else 0.0
             score = lexical + heading_bonus + 0.20 * self._precedence(p)
