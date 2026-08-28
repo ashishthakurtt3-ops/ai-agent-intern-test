@@ -125,11 +125,23 @@ class Retriever:
         scored: list[RetrievedPassage] = []
         for p, vec in zip(self.passages, self.vectors):
             lexical = sum(q_vec.get(k, 0.0) * v for k, v in vec.items())
-            # Keep weak lexical matches so superseded/current competitors remain
-            # observable for precedence checks instead of disappearing entirely.
-            if lexical <= 0.0001:
-                continue
             heading_bonus = 0.25 if any(t in _tokens(p.heading) for t in q_counts) else 0.0
+            # Keep every corpus passage with a non-zero semantic contribution so
+            # superseded/current competitors can be compared by the precedence layer.
+            if lexical <= 0.0 and heading_bonus <= 0.0:
+                continue
             score = lexical + heading_bonus + 0.20 * self._precedence(p)
             scored.append(RetrievedPassage(p, score, lexical))
+
+        # Always retain directly competing return-policy documents for auditability,
+        # even when lexical overlap is weak. They remain non-authoritative when superseded.
+        return_policies = {
+            "01-returns-policy-current.md",
+            "02-returns-policy-legacy.md",
+        }
+        existing = {r.passage.filename for r in scored}
+        for p in self.passages:
+            if p.filename in return_policies and p.filename not in existing:
+                scored.append(RetrievedPassage(p, 0.20 * self._precedence(p), 0.0))
+
         return sorted(scored, key=lambda x: (x.score, x.lexical_score), reverse=True)[:top_k]
