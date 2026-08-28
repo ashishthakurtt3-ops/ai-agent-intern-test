@@ -8,10 +8,10 @@ from .config import Settings
 
 
 class LLMClient:
-    """Thin OpenAI-compatible client; works with TokenRouter or api.openai.com."""
+    """Thin OpenAI-compatible Chat Completions client."""
 
     def __init__(self, settings: Settings):
-        kwargs: dict[str, Any] = {"api_key": settings.api_api_key}
+        kwargs: dict[str, Any] = {"api_key": settings.api_key}
         if settings.base_url:
             kwargs["base_url"] = settings.base_url
         self.client = OpenAI(**kwargs)
