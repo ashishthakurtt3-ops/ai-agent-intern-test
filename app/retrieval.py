@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
-from pathlib import Path
 import math
 import re
-from collections import Counter
+from pathlib import Path
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:[-–][A-Za-z0-9]+)*")
 
@@ -21,6 +21,7 @@ class Passage:
 class RetrievedPassage:
     passage: Passage
     score: float
+    lexical_score: float
 
 
 def _tokens(text: str) -> list[str]:
@@ -49,18 +50,18 @@ def load_passages(knowledge_dir: str | Path) -> list[Passage]:
         metadata, body = _parse_frontmatter(raw)
         current_heading = metadata.get("title", path.stem)
         chunk: list[str] = []
+
         def flush() -> None:
             nonlocal chunk
             text = "\n".join(chunk).strip()
             if text:
                 passages.append(Passage(path.name, current_heading, text, metadata.copy()))
             chunk = []
+
         for line in body.splitlines():
             if line.startswith("## ") or line.startswith("# "):
                 flush()
                 current_heading = line.lstrip("#").strip()
-            elif line.startswith("---"):
-                continue
             else:
                 chunk.append(line)
         flush()
@@ -94,16 +95,24 @@ class Retriever:
         authority = p.metadata.get("policy_authority", "").lower()
         audience = p.metadata.get("audience", "").lower()
         score = 0.0
-        if status == "active": score += 1.0
-        if status in {"superseded", "legacy", "archived"}: score -= 2.0
-        if authority == "official": score += 1.4
-        elif authority in {"internal", "unofficial"}: score -= 0.8
-        if audience == "customer": score += 0.4
-        if "internal" in p.filename.lower() or "migration" in p.filename.lower(): score -= 1.8
+        if status == "active":
+            score += 1.0
+        if status in {"superseded", "legacy", "archived"}:
+            score -= 2.0
+        if authority == "official":
+            score += 1.4
+        elif authority in {"internal", "unofficial"}:
+            score -= 0.8
+        if audience == "customer":
+            score += 0.4
+        if "internal" in p.filename.lower() or "migration" in p.filename.lower():
+            score -= 1.8
         return score
 
     def search(self, query: str, top_k: int = 6) -> list[RetrievedPassage]:
         q_counts = Counter(_tokens(query))
+        if not q_counts:
+            return []
         q_vec: dict[str, float] = {}
         total = max(1, sum(q_counts.values()))
         n = max(1, len(self.passages))
@@ -116,7 +125,9 @@ class Retriever:
         scored: list[RetrievedPassage] = []
         for p, vec in zip(self.passages, self.vectors):
             lexical = sum(q_vec.get(k, 0.0) * v for k, v in vec.items())
+            if lexical <= 0.01:
+                continue
             heading_bonus = 0.25 if any(t in _tokens(p.heading) for t in q_counts) else 0.0
             score = lexical + heading_bonus + 0.20 * self._precedence(p)
-            scored.append(RetrievedPassage(p, score))
-        return sorted(scored, key=lambda x: x.score, reverse=True)[:top_k]
+            scored.append(RetrievedPassage(p, score, lexical))
+        return sorted(scored, key=lambda x: (x.score, x.lexical_score), reverse=True)[:top_k]
