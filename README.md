@@ -4,47 +4,56 @@ A small customer-support agent built for the Aster & Row take-home assignment. I
 
 ## What this implements
 
-- RAG over `knowledge-base/` with front-matter metadata and document precedence.
-- Customer-safe `order_lookup` over `data/orders.json` without passing the complete orders file to the model.
-- Multi-turn session memory for contextual follow-ups.
-- Deterministic privacy and missing-order guards.
-- Prompt-injection-resistant handling of retrieved content as untrusted data.
-- Source references for knowledge-backed responses.
-- CLI and a lightweight FastAPI web UI.
-- Deterministic unit/regression tests plus behavior-level evaluation covering all supplied visible cases and five original cases.
-- Debug logging of retrieval, tool calls, fallbacks, and responses without logging secrets.
+- RAG over all supplied `knowledge-base/*.md` files with front-matter metadata and explicit precedence handling.
+- Customer-safe `order_lookup` over `data/orders.json`; the full orders dataset is never placed in the model prompt.
+- Multi-turn session memory, including order-ID carryover for follow-up questions.
+- Deterministic privacy, malformed-order, missing-order, unsupported-action, conflict, and insufficiency guards.
+- Prompt-injection-resistant treatment of retrieved documents as untrusted evidence rather than instructions.
+- Customer-facing source references in `filename + heading` form.
+- CLI and lightweight FastAPI web UI.
+- Deterministic unit/regression tests plus an API-backed behavior evaluation covering all supplied visible cases and five original cases.
+- Debug logging for user input, relevant history, retrieved passages/metadata/scores, sanitized tool results, fallbacks, handoffs, and final answers. Secrets are not logged.
+- Optional GitHub Actions execution of the full API-backed evaluation when the repository has an `OPENAI_API_KEY` secret.
 
 ## Architecture
 
 ```text
 User
   -> SupportAgent
-      -> contextual query + TF-IDF retrieval
-      -> precedence-aware source ranking
+      -> session context / intent guards
+      -> contextual query
+      -> local TF-IDF retrieval
+      -> precedence + customer-safe source filtering
       -> OpenAI Responses API
-           -> order_lookup function when an order ID is needed
-      -> grounded customer response + source refs + handoff
+           -> order_lookup function when an order ID is required
+      -> grounded answer + source refs + handoff flag
 ```
 
-The retriever is intentionally local and deterministic. Active official/customer-facing documents receive higher precedence; superseded/legacy/internal migration material is treated as untrusted or non-authoritative and is not exposed as a customer citation.
+The retriever is deliberately local and deterministic. This corpus is small, so a heavyweight vector database is unnecessary. Retrieval ranking considers lexical relevance plus document metadata such as active/superseded status, policy authority, and audience. A relevant internal or legacy document may be retrieved for safety analysis, but it is never presented as an authoritative customer source.
 
 ## Stack
 
 - Python 3.12+
 - OpenAI Responses API
-- Default model: `gpt-5.6-luna`
-- Local TF-IDF lexical retrieval (no vector database required)
+- Default model: `gpt-5.6-luna` (cost-sensitive OpenAI model)
+- Local TF-IDF retrieval
 - FastAPI + Uvicorn
 - pytest
+
+The selected model is an OpenAI API model available through the Responses API and designed for cost-sensitive workloads. urlOpenAI model documentationhttps://platform.openai.com/docs/models/gpt-4-turbo-and-gpt-4
 
 ## Setup
 
 ```bash
 python -m venv .venv
+
 # Windows PowerShell
 .venv\\Scripts\\Activate.ps1
+
 # macOS/Linux
 # source .venv/bin/activate
+
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 copy .env.example .env   # Windows
 # cp .env.example .env  # macOS/Linux
@@ -65,6 +74,16 @@ Never commit `.env` or an API key.
 python -m app.cli --debug
 ```
 
+Examples:
+
+```text
+Where can I return an unused backpack?
+Where is ORD-1007?
+When will it arrive?
+Do you ship internationally?
+What about Canada, and how long does it take?
+```
+
 ## Run the web UI
 
 ```bash
@@ -73,9 +92,11 @@ uvicorn app.web:app --reload
 
 Open `http://127.0.0.1:8000`.
 
+The web UI preserves a browser session ID so follow-up questions remain in the same conversation.
+
 ## Run tests
 
-Unit/regression tests do not require an OpenAI API call:
+The unit/regression suite does not make OpenAI API calls:
 
 ```bash
 pytest -q
@@ -87,69 +108,118 @@ Run the full behavior evaluation (requires `OPENAI_API_KEY`):
 python -m evaluation.runner
 ```
 
-The runner executes every supplied case in `evaluation/visible-cases.json` plus the five original cases in `evaluation/custom-cases.json`, prints per-case/category results, and writes a local `evaluation/results.json`.
+The evaluator runs every supplied case in `evaluation/visible-cases.json` plus five original cases in `evaluation/custom-cases.json`, reports individual results and categories, and writes `evaluation/results.json` locally. The generated results file is ignored by Git so a real API result is not accidentally committed.
 
 ## Evaluation results
 
 ### Baseline
 
-Initial baseline was the first minimal implementation before precedence/source filtering and deterministic safety guards. Record the first local `python -m evaluation.runner` output here.
+A baseline was established conceptually from the initial minimal implementation: it lacked reliable source filtering, explicit stale-order protection, contextual order carryover, malformed-order handling, and deterministic privacy/action guards. Because the API-backed evaluator has not been executed in this development environment, no baseline percentage is fabricated here.
 
 ### Final
 
-Record the verified local `python -m evaluation.runner` output here, including per-category and overall scores. This repository does not fabricate API-backed test results when they have not been executed.
+Run:
+
+```bash
+python -m evaluation.runner
+```
+
+Then copy the actual category and overall percentages into this section before submission. This repository intentionally does not invent API-backed scores.
+
+## Supplied visible cases covered
+
+The evaluator includes the full supplied set, including:
+
+- current vs legacy return-window precedence
+- TrailPlus return exception
+- final-sale damaged-item exception and human review
+- Canada multi-turn shipping
+- unsupported Germany shipping
+- valid, missing, malformed, unknown, cancelled, and no-ETA orders
+- order-data privacy
+- warranty scope
+- retrieved prompt injection
+- insufficient-information abstention
+- genuine conflict between two current official product sources
+
+## Original evaluation cases
+
+Five additional cases are included in `evaluation/custom-cases.json`:
+
+1. lowercase/whitespace-normalized order ID
+2. malformed order ID
+3. standard return-fee lookup
+4. warranty multi-turn follow-up
+5. unsupported refund approval action
 
 ## Bug diary
 
 ### 1. Legacy/internal material could become a customer citation
-- Reproduction: ask a return-policy question using terms also found in migration notes.
-- Root cause: retrieval can score semantically related legacy/internal passages.
-- Fix: customer-facing source exposure filters superseded/legacy/internal migration documents.
-- Regression: `test_current_returns_policy_beats_legacy` and source filtering in `SupportAgent`.
+- **Reproduce:** Ask a return-policy question with wording that also matches migration content.
+- **Root cause:** Retrieval relevance and customer citation authority are different concerns.
+- **Fix:** Separate retrieval candidates from customer-visible sources; superseded/legacy/internal sources can be evidence for analysis but are filtered from authority citations.
+- **Regression:** `test_current_returns_policy_beats_legacy` plus source filtering in `SupportAgent`.
 
 ### 2. Cancelled orders contained stale ETA/carrier fields
-- Reproduction: request the ETA for `ORD-1004`.
-- Root cause: the snapshot intentionally retains historical ETA/carrier values on the cancelled record.
-- Fix: the order tool clears stale carrier/ETA data for cancelled and returned orders and uses the safe status message.
-- Regression: `test_cancelled_order_drops_stale_eta`.
+- **Reproduce:** Ask when `ORD-1004` will arrive.
+- **Root cause:** The mock snapshot intentionally retains historical carrier/ETA fields after cancellation.
+- **Fix:** `OrderLookup` clears stale carrier/ETA information for cancelled and returned orders and returns the current safe status message.
+- **Regression:** `test_cancelled_order_drops_stale_eta`.
 
-### 3. Missing order IDs could lead to guessed statuses
-- Reproduction: ask “Where is my order?” with no identifier.
-- Root cause: an unconstrained model could answer generically or infer an order.
-- Fix: deterministic pre-model guard asks for the order ID and performs no lookup.
-- Regression: `test_missing_order_id_is_clarified`.
+### 3. Follow-up delivery questions could lose the previous order ID
+- **Reproduce:** Ask `Where is ORD-1007?`, then `When will it arrive?`.
+- **Root cause:** An early router only recognized order identifiers present in the latest user turn.
+- **Fix:** Session state now stores `last_order_id`, and status follow-ups explicitly reuse it in the model input.
+- **Regression:** session-routing guard coverage and the multi-turn evaluation case.
 
-### 4. Additional non-visible security case
-- Reproduction: request the email/risk score for `ORD-1007`.
-- Root cause: private fields exist in the raw order object.
-- Fix: private-data request is rejected before the model is called and the lookup tool itself is allow-listed.
-- Regression: `test_private_order_fields_are_refused_before_model` and order sanitization tests.
+### 4. Malformed order IDs could fall through to RAG
+- **Reproduce:** Ask `Please check ORD-10XX`.
+- **Root cause:** The first order-ID regex only recognized valid four-digit IDs, so malformed candidates were not classified as order input.
+- **Fix:** Detect `ORD-...` candidates separately and return a deterministic validation response without a tool call.
+- **Regression:** `test_malformed_order_id_is_rejected_without_lookup`.
+
+### 5. Genuine source conflict could be silently resolved by the model
+- **Reproduce:** Ask whether the Breeze Tumbler body can go in a dishwasher.
+- **Root cause:** Two active official customer sources deliberately disagree.
+- **Fix:** Detect the conflict pattern, expose both relevant sources, refuse to silently choose, and provide the safest interim guidance with human confirmation.
+- **Regression:** the supplied `genuine-active-source-conflict` evaluation case.
 
 ## Known limitations
 
-- Retrieval is lightweight lexical TF-IDF rather than a production embedding/vector stack. It is intentionally deterministic and easy to audit for this small corpus.
-- Session state is in memory; restarting the process clears conversations.
-- The evaluator uses deterministic assertions rather than a second LLM judge.
-- There are no mutation tools, so the agent cannot actually refund, cancel, replace, or change an order.
+- Retrieval uses local lexical TF-IDF rather than embeddings. This is a deliberate small-corpus tradeoff for auditability and determinism.
+- Session memory is process-local and is cleared on restart.
+- The agent has only an order lookup tool; it cannot actually refund, cancel, replace, or modify orders.
+- The behavior evaluator uses deterministic checks rather than a second LLM judge; semantic grading remains intentionally conservative.
+- A final verified API-backed score requires a valid OpenAI API key and execution on a local machine or CI runner.
 
 ## AI coding tools disclosure
 
-Development assistance used ChatGPT/GitHub-connected coding support to inspect the assignment, design the architecture, draft implementation code, and review edge cases. All generated code must be locally executed and reviewed before submission.
+Development assistance used ChatGPT with GitHub-connected repository access to inspect the assignment, design the architecture, draft code/tests, review edge cases, and revise the implementation.
 
-Example of an incomplete AI-generated suggestion: an early design allowed every positively-scored retrieval result to become a customer-visible source. That was unsafe because internal/legacy documents can be relevant but are not authoritative. The implementation was corrected to separate retrieval candidates from customer-safe source exposure and covered with regression tests.
+One concrete incomplete AI-generated suggestion occurred in the first implementation: all positively scored retrieval results were initially eligible to appear as customer-visible sources. That was unsafe because internal/legacy passages can be relevant without being authoritative. The design was corrected to separate retrieval evidence from customer-safe source exposure and covered with regression tests.
 
-## Demo checklist
+## Demo recording
 
-Record a 2–4 minute GIF/video showing:
+The assignment requires a 2–4 minute GIF or video embedded in the README. The repository includes the application and a reproducible recording checklist, but an actual recording must be captured from the running local application because it must show real API-backed behavior rather than a fabricated transcript.
 
-1. A policy question with a source citation.
-2. An order lookup such as `ORD-1007`.
-3. A multi-turn question such as international shipping followed by Canada.
-4. A conflict/insufficient-information case that recommends human confirmation.
-5. The evaluation suite running.
+See `demo/recording-checklist.md` for the exact five-scene sequence and commands. After recording, embed the resulting GIF/video in this section.
 
-Embed the GIF or a clickable video thumbnail in this README before submission.
+## Submission checklist
 
-## Original assignment
-
-The supplied assignment asks for a reliable RAG support agent, safe order lookup, multi-turn context, prompt/content safety, a behavior-level evaluation suite, observability, and a minimal interface. See the original repository history for the unmodified assignment README.
+- [x] Application source code
+- [x] RAG over supplied Markdown corpus
+- [x] Metadata-aware document precedence
+- [x] Safe order lookup
+- [x] Multi-turn session memory
+- [x] Prompt/content safety
+- [x] Visible-case evaluation coverage
+- [x] Five original evaluation cases
+- [x] Deterministic regression tests
+- [x] Debug observability
+- [x] CLI
+- [x] Simple web UI
+- [x] `.env.example` and secret-safe `.gitignore`
+- [x] Architecture/setup/run documentation
+- [x] Bug diary
+- [ ] Verified API-backed baseline/final scores
+- [ ] Real 2–4 minute demo GIF/video embedded in README
