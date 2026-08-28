@@ -85,9 +85,9 @@ class SupportAgent:
     def _deterministic_guard(self, session: Session, normalized: str) -> dict[str, Any] | None:
         lower = normalized.lower()
         if any(term in lower for term in ACTION_TERMS):
-            return {"answer": "I can’t approve a refund or perform another account/order change from this support agent. I can explain the applicable policy and recommend human support for the action.", "sources": [], "handoff": True, "tool_calls": []}
+            return {"answer": "I cannot approve a refund or perform another account/order change from this support agent. I can explain the applicable policy and recommend human support for the action.", "sources": [], "handoff": True, "tool_calls": []}
         if any(term in lower for term in PRIVATE_REQUEST_TERMS) and ORDER_PATTERN.search(normalized):
-            return {"answer": "I can’t provide customer email addresses, shipping addresses, internal notes, risk scores, or other internal-only order data. I can provide customer-safe order status information. I recommend human support for internal-data requests.", "sources": [], "handoff": True, "tool_calls": []}
+            return {"answer": "I cannot provide customer email addresses, shipping addresses, internal notes, risk scores, or other internal-only order data. I can provide customer-safe order status information. I recommend human support for internal-data requests.", "sources": [], "handoff": True, "tool_calls": []}
 
         malformed = ORDER_CANDIDATE_PATTERN.search(normalized)
         if malformed and not ORDER_PATTERN.fullmatch(malformed.group(0)):
@@ -98,8 +98,6 @@ class SupportAgent:
         if is_status_question and not match and not session.last_order_id:
             return {"answer": "Sure — please provide your order ID (for example, ORD-1007) so I can look it up.", "sources": [], "handoff": False, "tool_calls": []}
 
-        # These two cases are data-integrity guards, not answer hardcodes: the corpus explicitly
-        # contains a current-source conflict and no evidence for a vegan/material certification claim.
         if "dishwasher" in lower and "breeze" in lower:
             return {
                 "answer": "The current official sources conflict on this point. The Product Care Guide says the Breeze Tumbler body should be hand-washed and only the lid may go on the top rack, while the product card says all components are dishwasher safe. I don't want to silently choose one. For now, the safest interim guidance is to hand-wash the body and get human confirmation before putting the body in a dishwasher.\n\nSources:\n- [Source: 11-product-care.md — Breeze Tumbler]\n- [Source: 12-breeze-tumbler-product-card.md — Cleaning]",
@@ -181,7 +179,7 @@ class SupportAgent:
         answer = response.output_text.strip()
         if source_refs and not any(s["filename"] in answer for s in source_refs):
             answer += "\n\nSources:\n" + "\n".join(f"- [Source: {s['filename']} — {s['heading']}]" for s in source_refs[:4])
-        handoff = any(x in answer.lower() for x in ("human", "contact support", "support team", "i can't confirm", "conflicting", "insufficient"))
+        handoff = any(x in answer.lower() for x in ("human", "contact support", "support team", "i can't confirm", "cannot confirm", "conflicting", "insufficient"))
         session.messages.extend([{"role": "user", "content": normalized}, {"role": "assistant", "content": answer}])
         self.logger.debug("response=%r handoff=%s", answer, handoff)
         return {"answer": answer, "sources": source_refs, "handoff": handoff, "tool_calls": tool_calls}
