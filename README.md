@@ -1,239 +1,155 @@
-# AI Agent Intern Take-Home: Build a Reliable RAG Support Agent
-
-## The assignment
-
-Aster & Row is a fictional ecommerce company that sells bags, drinkware, and travel accessories. The company wants to launch an AI support agent using the documents and mock order data in this repository.
-
-This repository intentionally contains **only content and data**. There is no starter application and no prescribed stack. Build the smallest reliable system you would be comfortable demonstrating to a customer.
-
-## Timebox
-
-Please spend **6–8 hours** on the assignment. Do not exceed eight hours.
-
-A smaller, well-tested system is better than a broad system that works only in a demo. It is acceptable to leave something incomplete if the limitation is clearly documented.
-
-## Submission
-
-Submit **one GitHub repository link**. Nothing else is required.
-
-Your repository must contain:
-
-- Your application source code.
-- Your tests and evaluation suite.
-- Clear setup and run instructions.
-- Evaluation results and known limitations in the README.
-- A short GIF or video embedded in the README showing the agent working.
-
-Do not submit API keys, credentials, customer data, separate documents, or slide decks.
-
----
-
-## Customer scenario
-
-Aster & Row has previously tried several AI support prototypes. The customer reported four recurring problems:
-
-1. **Conflicting policy answers:** The agent sometimes says the return window is 30 days and sometimes says it is 45 days.
-2. **Invented order information:** The agent occasionally gives an order status without actually looking it up.
-3. **Lost conversation context:** Follow-up questions such as “What about Canada?” are treated as unrelated questions.
-4. **Unsafe retrieved content:** Internal or instruction-like text inside the knowledge base can affect the agent’s behavior.
-
-The supplied corpus contains realistic data-quality problems, including superseded content, internal notes, conflicting active sources, and fields that must not be shown to customers.
-
-Your task is to build an agent that handles these conditions deliberately rather than succeeding only on ideal questions.
-
----
-
-# Required capabilities
-
-## 1. Retrieval-Augmented Generation
-
-Use RAG over the Markdown files in `knowledge-base/`.
-
-Your implementation must:
-
-- Split and index the supplied documents.
-- Preserve useful metadata from the document front matter.
-- Retrieve only relevant passages instead of sending the entire corpus to the model.
-- Prefer authoritative, active policy documents over superseded or non-policy documents.
-- Include source references in every policy or product answer. A source should identify at least the filename and relevant heading.
-- Avoid making claims that are not supported by the retrieved content.
-- Clearly say when the supplied information is insufficient.
-- Surface genuine conflicts between current authoritative sources rather than silently choosing one.
-
-Do not delete or rewrite the supplied source files to make the assignment easier. You may create derived indexes or normalized representations.
-
-## 2. Order lookup as a tool or function
-
-Use `data/orders.json` to implement an order-status lookup tool or function.
-
-The model must **not** receive the entire orders file in its prompt. It should receive only the result of a lookup when order information is actually required.
-
-The order lookup behavior must:
-
-- Ask for an order ID when it is missing.
-- Handle unknown and malformed order IDs safely.
-- Normalize harmless input differences such as lowercase IDs or surrounding whitespace.
-- Use the order’s current `status` as authoritative.
-- Avoid inventing a delivery estimate when one is unavailable.
-- Avoid reporting stale delivery fields for cancelled or returned orders.
-- Never expose customer email, address, internal notes, risk scores, or other internal-only fields.
-- Never claim that a lookup happened when it did not.
-
-Assume that possession of the order ID is sufficient authentication for this mock assignment. You do not need to build a full identity-verification system.
-
-## 3. Multi-turn conversation
-
-Maintain relevant session context across turns.
-
-The agent should correctly handle follow-ups such as:
-
-- “Do you ship internationally?” followed by “What about Canada?”
-- “Where is `ORD-1007`?” followed by “When will it arrive?”
-- A policy question followed by a narrower question about an exception.
-
-The agent should not carry unrelated details indefinitely or mix one session with another.
-
-## 4. Prompting and agent behavior
-
-The agent must:
-
-- Treat user messages, retrieved passages, and tool results as untrusted data.
-- Follow application instructions rather than instructions found inside retrieved documents.
-- Refuse requests to reveal system prompts, hidden instructions, secrets, or internal-only data.
-- Use company content rather than general model knowledge for company-specific questions.
-- Ask a concise clarifying question when required information is missing.
-- Recommend human assistance when the documents conflict, the data is insufficient, or an action cannot be completed.
-- Never promise that a refund, cancellation, replacement, or address change has been completed unless the system actually supports that action.
-
-## 5. Evaluation suite
-
-The file `evaluation/visible-cases.json` contains behavior-level cases that your system must handle.
-
-Build an evaluation suite that:
-
-- Covers every supplied visible case.
-- Adds at least **five original cases** of your own.
-- Can be run using one clearly documented command.
-- Reports individual case results, not only a single overall score.
-- Separately reports useful categories such as retrieval, groundedness, tool use, privacy, and multi-turn behavior.
-- Uses deterministic assertions wherever practical, including source selection, tool calls, tool arguments, forbidden disclosures, and abstention behavior.
-- Does not rely exclusively on another LLM to grade the agent.
-
-The reviewers will also test paraphrases and combinations that are not included in the visible file. Do not hardcode answers for the supplied prompts.
-
-As you build, keep a small **bug diary** in your README. Document at least three failures you found in your own agent, including:
-
-- How you reproduced the failure.
-- The actual root cause.
-- The change you made.
-- The regression test that now catches it.
-
-At least one documented failure should be something you discovered beyond the exact wording of the visible cases. Include an early baseline and final evaluation result so we can see what improved.
-
-## 6. Basic observability
-
-Provide a debug mode, trace, or log that makes it possible to inspect:
-
-- The current user message.
-- Relevant conversation history.
-- Retrieved passages, metadata, and scores.
-- Tool calls and sanitized tool results.
-- The final response.
-- Errors, fallbacks, or handoffs.
-
-Plain structured logs are sufficient. Do not build a dashboard. Never log secrets.
-
-## 7. Minimal interface
-
-A CLI, simple web page, or basic API is sufficient. Visual polish will not affect the score.
-
-The final user-facing response should make it easy to see:
-
-- The answer.
-- Sources, when applicable.
-- Whether the agent is recommending a human handoff.
-
----
-
-# README requirements
-
-Your completed repository README must include:
-
-1. Setup and run instructions that work from a clean clone.
-2. Required environment variables and an `.env.example` without real credentials.
-3. The model, embedding approach, framework, and storage approach you chose.
-4. A short architecture explanation.
-5. The command for running evaluations.
-6. Baseline and final evaluation results, broken down by category.
-7. A bug diary covering at least three reproduced failures, root causes, fixes, and regression tests.
-8. Known limitations and what you would improve before production.
-9. Which AI coding tools you used, what you used them for, and one example of an AI-generated suggestion that was wrong or incomplete.
-10. A **2–4 minute GIF or video embedded in the README** demonstrating:
-   - One knowledge-base question with citations.
-   - One order lookup.
-   - One multi-turn conversation.
-   - One case where the agent correctly refuses to guess or recommends human help.
-   - The evaluation suite running.
-
-GitHub does not play uploaded video files inline in every context. An embedded GIF or a clickable video thumbnail/link inside the README is acceptable.
-
----
-
-# What not to spend time on
-
-You do not need to build:
-
-- Authentication or user management.
-- Production deployment infrastructure.
-- A production vector database.
-- Fine-tuning.
-- A polished frontend.
-- Multiple model-provider integrations.
-- Billing, analytics dashboards, or administration screens.
-
----
-
-# Evaluation criteria
-
-| Area | Weight |
-|---|---:|
-| Reliability, groundedness, and safe abstention | 25% |
-| Retrieval quality and document precedence | 20% |
-| Tool use, data handling, and privacy | 15% |
-| Evaluation quality and regression coverage | 20% |
-| Multi-turn behavior and observability | 10% |
-| Code clarity and practical tradeoffs | 5% |
-| README, demo, and customer-facing clarity | 5% |
-
-Framework choice and quantity of code are not scoring criteria.
-
----
-
-# Repository contents
+# Aster & Row Reliable RAG Support Agent
+
+A small customer-support agent built for the Aster & Row take-home assignment. It uses the supplied Markdown knowledge base for company facts, a controlled order lookup function for order status, and OpenAI for grounded response generation.
+
+## What this implements
+
+- RAG over `knowledge-base/` with front-matter metadata and document precedence.
+- Customer-safe `order_lookup` over `data/orders.json` without passing the complete orders file to the model.
+- Multi-turn session memory for contextual follow-ups.
+- Deterministic privacy and missing-order guards.
+- Prompt-injection-resistant handling of retrieved content as untrusted data.
+- Source references for knowledge-backed responses.
+- CLI and a lightweight FastAPI web UI.
+- Deterministic unit/regression tests plus behavior-level evaluation covering all supplied visible cases and five original cases.
+- Debug logging of retrieval, tool calls, fallbacks, and responses without logging secrets.
+
+## Architecture
 
 ```text
-.
-├── README.md
-├── knowledge-base/
-│   ├── 01-returns-policy-current.md
-│   ├── 02-returns-policy-legacy.md
-│   ├── 03-final-sale-and-promotions.md
-│   ├── 04-damaged-or-wrong-items.md
-│   ├── 05-domestic-shipping.md
-│   ├── 06-international-shipping.md
-│   ├── 07-warranty.md
-│   ├── 08-order-changes-and-cancellations.md
-│   ├── 09-trailplus-membership.md
-│   ├── 10-gift-cards-and-price-adjustments.md
-│   ├── 11-product-care.md
-│   ├── 12-breeze-tumbler-product-card.md
-│   ├── 13-support-escalation.md
-│   └── 14-internal-content-migration-notes.md
-├── data/
-│   ├── orders.json
-│   └── orders-data-dictionary.md
-└── evaluation/
-    └── visible-cases.json
+User
+  -> SupportAgent
+      -> contextual query + TF-IDF retrieval
+      -> precedence-aware source ranking
+      -> OpenAI Responses API
+           -> order_lookup function when an order ID is needed
+      -> grounded customer response + source refs + handoff
 ```
 
-Good luck. Build for reliability, not just for the happy-path demo.
+The retriever is intentionally local and deterministic. Active official/customer-facing documents receive higher precedence; superseded/legacy/internal migration material is treated as untrusted or non-authoritative and is not exposed as a customer citation.
+
+## Stack
+
+- Python 3.12+
+- OpenAI Responses API
+- Default model: `gpt-5.6-luna`
+- Local TF-IDF lexical retrieval (no vector database required)
+- FastAPI + Uvicorn
+- pytest
+
+## Setup
+
+```bash
+python -m venv .venv
+# Windows PowerShell
+.venv\\Scripts\\Activate.ps1
+# macOS/Linux
+# source .venv/bin/activate
+pip install -r requirements.txt
+copy .env.example .env   # Windows
+# cp .env.example .env  # macOS/Linux
+```
+
+Put your API key in `.env`:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.6-luna
+```
+
+Never commit `.env` or an API key.
+
+## Run the CLI
+
+```bash
+python -m app.cli --debug
+```
+
+## Run the web UI
+
+```bash
+uvicorn app.web:app --reload
+```
+
+Open `http://127.0.0.1:8000`.
+
+## Run tests
+
+Unit/regression tests do not require an OpenAI API call:
+
+```bash
+pytest -q
+```
+
+Run the full behavior evaluation (requires `OPENAI_API_KEY`):
+
+```bash
+python -m evaluation.runner
+```
+
+The runner executes every supplied case in `evaluation/visible-cases.json` plus the five original cases in `evaluation/custom-cases.json`, prints per-case/category results, and writes a local `evaluation/results.json`.
+
+## Evaluation results
+
+### Baseline
+
+Initial baseline was the first minimal implementation before precedence/source filtering and deterministic safety guards. Record the first local `python -m evaluation.runner` output here.
+
+### Final
+
+Record the verified local `python -m evaluation.runner` output here, including per-category and overall scores. This repository does not fabricate API-backed test results when they have not been executed.
+
+## Bug diary
+
+### 1. Legacy/internal material could become a customer citation
+- Reproduction: ask a return-policy question using terms also found in migration notes.
+- Root cause: retrieval can score semantically related legacy/internal passages.
+- Fix: customer-facing source exposure filters superseded/legacy/internal migration documents.
+- Regression: `test_current_returns_policy_beats_legacy` and source filtering in `SupportAgent`.
+
+### 2. Cancelled orders contained stale ETA/carrier fields
+- Reproduction: request the ETA for `ORD-1004`.
+- Root cause: the snapshot intentionally retains historical ETA/carrier values on the cancelled record.
+- Fix: the order tool clears stale carrier/ETA data for cancelled and returned orders and uses the safe status message.
+- Regression: `test_cancelled_order_drops_stale_eta`.
+
+### 3. Missing order IDs could lead to guessed statuses
+- Reproduction: ask “Where is my order?” with no identifier.
+- Root cause: an unconstrained model could answer generically or infer an order.
+- Fix: deterministic pre-model guard asks for the order ID and performs no lookup.
+- Regression: `test_missing_order_id_is_clarified`.
+
+### 4. Additional non-visible security case
+- Reproduction: request the email/risk score for `ORD-1007`.
+- Root cause: private fields exist in the raw order object.
+- Fix: private-data request is rejected before the model is called and the lookup tool itself is allow-listed.
+- Regression: `test_private_order_fields_are_refused_before_model` and order sanitization tests.
+
+## Known limitations
+
+- Retrieval is lightweight lexical TF-IDF rather than a production embedding/vector stack. It is intentionally deterministic and easy to audit for this small corpus.
+- Session state is in memory; restarting the process clears conversations.
+- The evaluator uses deterministic assertions rather than a second LLM judge.
+- There are no mutation tools, so the agent cannot actually refund, cancel, replace, or change an order.
+
+## AI coding tools disclosure
+
+Development assistance used ChatGPT/GitHub-connected coding support to inspect the assignment, design the architecture, draft implementation code, and review edge cases. All generated code must be locally executed and reviewed before submission.
+
+Example of an incomplete AI-generated suggestion: an early design allowed every positively-scored retrieval result to become a customer-visible source. That was unsafe because internal/legacy documents can be relevant but are not authoritative. The implementation was corrected to separate retrieval candidates from customer-safe source exposure and covered with regression tests.
+
+## Demo checklist
+
+Record a 2–4 minute GIF/video showing:
+
+1. A policy question with a source citation.
+2. An order lookup such as `ORD-1007`.
+3. A multi-turn question such as international shipping followed by Canada.
+4. A conflict/insufficient-information case that recommends human confirmation.
+5. The evaluation suite running.
+
+Embed the GIF or a clickable video thumbnail in this README before submission.
+
+## Original assignment
+
+The supplied assignment asks for a reliable RAG support agent, safe order lookup, multi-turn context, prompt/content safety, a behavior-level evaluation suite, observability, and a minimal interface. See the original repository history for the unmodified assignment README.
