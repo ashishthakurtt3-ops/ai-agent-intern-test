@@ -1,5 +1,8 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
 import os
+from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -21,5 +24,12 @@ def get_settings() -> Settings:
         raise RuntimeError("OPENAI_API_KEY is not set. Copy .env.example to .env and add your key.")
     return Settings(
         openai_api_key=key,
-        model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
+        model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna",
+        data_dir=os.getenv("ASTER_DATA_DIR", "data"),
+        knowledge_dir=os.getenv("ASTER_KNOWLEDGE_DIR", "knowledge-base"),
+        retrieval_top_k=int(os.getenv("ASTER_RETRIEVAL_TOP_K", "6")),
     )
+
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
