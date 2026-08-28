@@ -3,8 +3,8 @@ from app.config import Settings
 
 
 def make_agent() -> SupportAgent:
-    # The OpenAI client is constructed, but these guard paths return before any network call.
-    return SupportAgent(Settings(openai_api_key="test-key"))
+    # Guard paths return before any network call.
+    return SupportAgent(Settings(api_key="test-key"))
 
 
 def test_missing_order_id_is_clarified():
