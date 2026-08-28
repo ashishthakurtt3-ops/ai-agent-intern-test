@@ -50,10 +50,22 @@ class SupportAgent:
 
     @staticmethod
     def _source_refs(retrieved: list[RetrievedPassage]) -> list[dict]:
-        return [
-            {"filename": r.passage.filename, "heading": r.passage.heading, "score": round(r.score, 4)}
-            for r in retrieved if r.score > 0
-        ][:6]
+        public = []
+        for r in retrieved:
+            meta = r.passage.metadata
+            status = meta.get("status", "active").lower()
+            authority = meta.get("policy_authority", "").lower()
+            audience = meta.get("audience", "").lower()
+            filename = r.passage.filename.lower()
+            if status in {"superseded", "legacy", "archived"}:
+                continue
+            if "internal" in filename or "migration" in filename or authority in {"internal", "unofficial"}:
+                continue
+            if audience and audience != "customer":
+                continue
+            if r.score > 0:
+                public.append({"filename": r.passage.filename, "heading": r.passage.heading, "score": round(r.score, 4)})
+        return public[:6]
 
     def answer(self, user_message: str, session_id: str = "default") -> dict:
         session = self.sessions.setdefault(session_id, Session())
@@ -62,7 +74,6 @@ class SupportAgent:
             return {"answer": "Please enter a question.", "sources": [], "handoff": False, "tool_calls": []}
 
         lower = normalized.lower()
-        # Deterministic privacy guard: private fields never reach the LLM.
         if any(term in lower for term in PRIVATE_REQUEST_TERMS) and ORDER_PATTERN.search(normalized):
             answer = ("I can’t provide customer email addresses, shipping addresses, internal notes, risk scores, "
                       "or other internal-only order data. I can provide customer-safe order status information. "
@@ -108,17 +119,14 @@ class SupportAgent:
             for call in calls:
                 args = json.loads(call.arguments)
                 result = self.orders.lookup(args["order_id"])
-                safe_result = result.copy()
-                tool_calls.append({"name": "order_lookup", "arguments": args, "result": safe_result})
-                self.logger.debug("tool=%s args=%s sanitized_result=%s", call.name, args, safe_result)
-                tool_outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(safe_result)})
+                tool_calls.append({"name": "order_lookup", "arguments": args, "result": result})
+                self.logger.debug("tool=%s args=%s sanitized_result=%s", call.name, args, result)
+                tool_outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(result)})
             response = self.client.responses.create(model=self.settings.model, instructions=SYSTEM_PROMPT, input=[*response.output, *tool_outputs], tools=[tool])
 
         answer = response.output_text.strip()
-        # Enforce visible citations for knowledge-backed answers.
         if source_refs and not any(s["filename"] in answer for s in source_refs):
-            refs = "\n\nSources:\n" + "\n".join(f"- [Source: {s['filename']} — {s['heading']}]" for s in source_refs[:4])
-            answer += refs
+            answer += "\n\nSources:\n" + "\n".join(f"- [Source: {s['filename']} — {s['heading']}]" for s in source_refs[:4])
         handoff = any(x in answer.lower() for x in ("human", "contact support", "support team", "i can't confirm", "conflicting", "insufficient"))
         session.messages.extend([{"role": "user", "content": normalized}, {"role": "assistant", "content": answer}])
         self.logger.debug("response=%r handoff=%s", answer, handoff)
