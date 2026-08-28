@@ -13,7 +13,7 @@ load_dotenv()
 class Settings:
     api_key: str
     model: str = "z-ai/glm-5.3"
-    base_url: str | None = "https://beta.token-router.org/v1"
+    base_url: str | None = "https://api.tokenrouter.io/v1"
     data_dir: str = "data"
     knowledge_dir: str = "knowledge-base"
     retrieval_top_k: int = 6
@@ -26,7 +26,7 @@ def get_settings() -> Settings:
     return Settings(
         api_key=key,
         model=os.getenv("ASTER_MODEL", "z-ai/glm-5.3").strip() or "z-ai/glm-5.3",
-        base_url=os.getenv("ASTER_BASE_URL", "https://beta.token-router.org/v1").strip() or None,
+        base_url=os.getenv("ASTER_BASE_URL", "https://api.tokenrouter.io/v1").strip() or None,
         data_dir=os.getenv("ASTER_DATA_DIR", "data"),
         knowledge_dir=os.getenv("ASTER_KNOWLEDGE_DIR", "knowledge-base"),
         retrieval_top_k=int(os.getenv("ASTER_RETRIEVAL_TOP_K", "6")),
